@@ -11,7 +11,7 @@ local pmArray = {}
 local adminArray = {}
 
 -- Mimgui variables
-local shouldShowMenu = new.bool(true)
+local shouldShowMenu = new.bool(false)
 
 -- Variables
 local messageStream = 'pm'
@@ -26,8 +26,9 @@ end, function(player)
     imgui.Begin('Organizer', shouldShowMenu)
     player.HideCursor = true
 
-    if imgui.IsAnyItemHovered() then haveNewPMs = false end
-    if imgui.IsAnyItemHovered() then haveNewAdminMessages = false end
+    if imgui.IsAnyItemHovered() then
+        clearNewMessagesIndicator()
+    end
 
     -- Selectors
     -- PM
@@ -37,7 +38,9 @@ end, function(player)
     else
         imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(1.0, 1.0, 1.0, 1.0))
     end
-    if imgui.Selectable('Private Messages', (function () return messageStream == 'pm' end)()) then
+    if imgui.Selectable('Private Messages', (function()
+        return messageStream == 'pm'
+    end)()) then
         messageStream = 'pm'
     end
     imgui.PopStyleColor()
@@ -48,7 +51,9 @@ end, function(player)
     else
         imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(0.8, 0.8, 0.8, 0.8))
     end
-    if imgui.Selectable('Admin Messages', (function () return messageStream ~= 'pm' end)()) then
+    if imgui.Selectable('Admin Actions', (function()
+        return messageStream ~= 'pm'
+    end)()) then
         messageStream = 'admin'
     end
     imgui.PopStyleColor()
@@ -58,16 +63,16 @@ end, function(player)
     imgui.SameLine(0)
 
     -- Messages
-    imgui.BeginChild("Messages", imgui.ImVec2(340, 190), true, imgui.WindowFlags.AlwaysHorizontalScrollbar)
+    imgui.BeginChild("Messages", imgui.ImVec2(340, 190), true)
     if messageStream == 'pm' then
         for i, message in reversedipairs(pmArray) do
-            if startsWith(message, "->") then
-                imgui.TextWrapped(message)
+            if string.find(message, ">to", 1) ~= nil then
+                imgui.TextWrapped(string.gsub(message, ">to", ""))
             else
                 imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(1.0, 0.0, 0.0, 1.0));
                 imgui.TextWrapped(message)
                 imgui.PopStyleColor()
-               
+
                 if imgui.Button('Reply') then
                     sampSetChatInputEnabled(true)
                     playerId = getPlayerIdFromText(message)
@@ -77,7 +82,7 @@ end, function(player)
         end
     else
         for i, message in reversedipairs(adminArray) do
-            imgui.Text(message)
+            imgui.TextWrapped(message)
         end
     end
     imgui.EndChild()
@@ -111,20 +116,35 @@ function SE.onServerMessage(arg1, text)
     processServerMessage(text)
 end
 
-function processServerMessage(text) 
+function processServerMessage(text)
+    timestamp = '[' .. os.date("%H:%M:%S") .. '] '
     if startsWith(text, 'ADMIN:') then
         local nameAction = string.match(text, 'ADMIN: (.*)')
-        table.insert(adminArray, nameAction)
+        table.insert(adminArray, timestamp .. nameAction)
         haveNewAdminMessages = true
     elseif startsWith(text, '>> PM from') then
         local playerName, pmMessage = string.match(text, '>> PM from (.*) %(.*: (.*)')
         local privateMessage = playerName .. ': ' .. pmMessage
-        table.insert(pmArray, privateMessage)
+        table.insert(pmArray, timestamp .. privateMessage)
         haveNewPMs = true
     elseif startsWith(text, '>> PM to') then
         local playerName, pmMessage = string.match(text, '>> PM to (.*) .*:(.*)')
-        local privateMessage = "->" .. playerName .. ': ' .. pmMessage
-        table.insert(pmArray, privateMessage)
+        local privateMessage = playerName .. ': ' .. pmMessage
+        table.insert(pmArray, '>to' .. timestamp .. privateMessage)
+    end
+end
+
+function clearNewMessagesIndicator() 
+    haveNewPMs = false
+    haveNewAdminMessages = false
+end
+
+function toggleMessageStream()
+    clearNewMessagesIndicator()
+    if messageStream == 'pm' then
+        messageStream = 'admin'
+    elseif messageStream == 'admin' then
+        messageStream = 'pm'
     end
 end
 
@@ -136,10 +156,20 @@ function main()
     while true do
         wait(10)
         if wasKeyPressed(VK_PAUSE) then
-            toggleShowMenu()
+            if shouldShowMenu[0] then
+                lua_thread.create(function()
+                    wait(500)
+                    if isKeyDown(VK_PAUSE) then
+                        toggleShowMenu()
+                    end
+                end)
+                toggleMessageStream()
+            else
+                toggleShowMenu()
+            end
         end
     end
-    
+
     if sampGetCurrentServerAddress() ~= "51.254.85.134" then
         return
     end
