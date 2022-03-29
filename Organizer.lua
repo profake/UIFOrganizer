@@ -43,6 +43,7 @@ imgui.OnInitialize(function()
     local iconRanges = imgui.new.ImWchar[3](fa.min_range, fa.max_range, 0)
     imgui.GetIO().Fonts:AddFontFromFileTTF('trebucbd.ttf', 14.0, nil, glyph_ranges)
     icon = imgui.GetIO().Fonts:AddFontFromFileTTF('moonloader/resource/fonts/fa-solid-900.ttf', 14.0, config, iconRanges)
+    imgui.GetIO().FontGlobalScale = 1.10
 end)
 
 function getFlashingColor(firstColor, secondColor)
@@ -70,7 +71,6 @@ local notificationFrame = imgui.OnFrame(function() return shouldShowNotification
     imgui.SetNextWindowPos(imgui.ImVec2(sizeX / 1.07, sizeY / 1.13), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
     imgui.SetNextWindowSize(imgui.ImVec2(150, 25), imgui.Cond.FirstUseEver)
     imgui.Begin('Notifications', shouldShowNotification, imgui.WindowFlags.NoTitleBar + imgui.WindowFlags.NoResize + imgui.WindowFlags.AlwaysAutoResize)
-    imgui.SetWindowFontScale(1.2)
     if haveNewPMs then
         imgui.TextColored(getFlashingColor(colors.red, colors.yellow), 'You have new PMs')
     end
@@ -86,7 +86,6 @@ local messagesFrame = imgui.OnFrame(function() return shouldShowMenu[0] end, fun
     imgui.SetNextWindowPos(imgui.ImVec2(sizeX / 1.174, sizeY / 1.23), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
     imgui.SetNextWindowSize(imgui.ImVec2(500, 250), imgui.Cond.FirstUseEver)
     imgui.Begin('Organizer', shouldShowMenu)
-    imgui.SetWindowFontScale(1.15)
     player.HideCursor = true
 
     if imgui.IsAnyItemHovered() then
@@ -119,7 +118,7 @@ local messagesFrame = imgui.OnFrame(function() return shouldShowMenu[0] end, fun
             imgui.PopStyleColor()
         imgui.EndChild()
 
-        imgui.BeginChild("Settings", imgui.ImVec2(80, 30), true)
+        imgui.BeginChild(fa.ICON_FA_COG .."Settings", imgui.ImVec2(90, 35), true)
             if imgui.Selectable('Settings', messageStream == 'settings') then
                 messageStream = 'settings'
             end
@@ -133,9 +132,17 @@ local messagesFrame = imgui.OnFrame(function() return shouldShowMenu[0] end, fun
     if messageStream == 'pm' then
         for i, message in reversedipairs(pmArray) do
             if string.find(message, ">to", 1) ~= nil then
-                imgui.TextWrapped(string.gsub(message, ">to", ""))
+                if string.find(message, ">toInactive", 1) ~= nil then 
+                    message = string.gsub(message, ">toInactive", "")
+                    imgui.PushStyleColor(imgui.Col.Text, colors.grey);
+                else 
+                    message = string.gsub(message, ">to", "")
+                    imgui.PushStyleColor(imgui.Col.Text, colors.white);
+                end
+                imgui.TextWrapped(message)
+                imgui.PopStyleColor()
             else
-                imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(1.0, 0.0, 0.0, 1.0));
+                imgui.PushStyleColor(imgui.Col.Text, colors.red);
                 imgui.TextWrapped(message)
                 imgui.PopStyleColor()
                 if showReplyButton[0] then 
@@ -217,20 +224,24 @@ function processServerMessage(text)
              writeToChatLog(text) 
              return false
         end
-    elseif startsWith(text, '>> PM from') then
-        local playerName, pmMessage = string.match(text, '>> PM from (.*) %(.*: (.*)')
+    elseif startsWith(text, '>> PM ') then
+        local inactive = ''
+        local to = ''
+        
+        if string.find(text, "(Not Active)") ~= nil then 
+            inactive = 'Inactive'
+        end
+        
+        if string.find(text, '>> PM to') ~= nil then
+            to = '>to'
+            clearNewMessagesIndicator()
+        else 
+            haveNewPMs = true
+        end
+
+        local playerName, pmMessage = string.match(text, '>> PM .* (.*) %(.*%): (.*)')
         local privateMessage = playerName .. ': ' .. pmMessage
-        table.insert(pmArray, timestamp .. privateMessage)
-        haveNewPMs = true
-        if blockMessagesInChat[0] then
-            writeToChatLog(text) 
-            return false
-       end
-    elseif startsWith(text, '>> PM to') then
-        clearNewMessagesIndicator()
-        local playerName, pmMessage = string.match(text, '>> PM to (.*) .*:(.*)')
-        local privateMessage = playerName .. ': ' .. pmMessage
-        table.insert(pmArray, '>to' .. timestamp .. privateMessage)
+        table.insert(pmArray, to .. inactive .. timestamp .. privateMessage)
         if blockMessagesInChat[0] then
             writeToChatLog(text) 
             return false
@@ -249,6 +260,7 @@ function toggleMessageStream()
     clearNewMessagesIndicator()
     messageStream = messageStream == 'pm' and 'admin' or 'pm'
 end
+
 
 function toggleNotification()
     shouldShowNotification[0] = true
